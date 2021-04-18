@@ -1,68 +1,65 @@
 """
 
 RW  - GPIO13 (D7)
+RS  - GPIO12 (D6)
 E   - GPIO14 (D5)
 PSB - GND
 
 """
 from micropython import const
 from time import sleep
-
+from framebuf import FrameBuffer, MONO_HLSB
 
 ST7920_DAT           = const(0xFA)    # Data
 ST7920_CMD           = const(0xF8)    # Command
 
-ST7920_CLEAR_SCREEN  = const(0x01)    # Clear screen
-ST7920_ENTRY_MODE    = const(0x06)    # Cursor direction to right
-ST7920_DISPLAY_CTRL  = const(0x0C)    # Turns display on
-ST7920_BASIC         = const(0x30)    # Basic instruction set
+ST7920_CLEAR_SCREEN  = const(0x01)
+ST7920_DISPLAY_CTRL  = const(0x0C)
+ST7920_BASIC         = const(0x30)
+ST7920_EXTEND        = const(0x34)
 
-ST7920_WIDTH         = const(16)
-ST7920_HEIGHT        = const(4)
-ST7920_LINES         = (0x80, 0x90, 0x88, 0x98)
+ST7920_WIDTH         = const(128)
+ST7920_HEIGHT        = const(64)
 
-class ST7920:    
+class ST7920(FrameBuffer):    
     def __init__(self, spi, rst=None):
-        self.spi = spi
+        self.spi = spi        
         self.rst = rst
-        
-        if self.rst:
+        if rst:
             self.rst.init(self.rst.OUT, value=1)
-        self.buf = bytearray(3)
-
+        self.cmd = bytearray(3)
+        self.buf = bytearray(ST7920_WIDTH * ST7920_HEIGHT // 8)
+        super().__init__(self.buf, ST7920_WIDTH, ST7920_HEIGHT, MONO_HLSB)
         self.init()
 
     def _write(self, cmd, data):
-        self.buf[0] = cmd
-        self.buf[1] = (data & 0xF0)
-        self.buf[2] = ((data << 4) & 0xF0)
-        self.spi.write(self.buf)
+        self.cmd[0] = cmd
+        self.cmd[1] = (data & 0xF0)
+        self.cmd[2] = ((data << 4) & 0xF0)
+        self.spi.write(self.cmd)
     
-    def reset(self):
+    def init(self):
         if self.rst:
             self.rst(0)
             sleep(0.1)
             self.rst(1)
-    
-    def init(self):
-        self.reset()
         for cmd in (ST7920_BASIC,
                     ST7920_CLEAR_SCREEN,
-                    ST7920_ENTRY_MODE,
-                    ST7920_DISPLAY_CTRL):
+                    ST7920_DISPLAY_CTRL,
+                    ST7920_EXTEND,
+                    ST7920_EXTEND | 0x02):
             self._write(ST7920_CMD, cmd)
+        self.show()
+        
     
-    def text(self, t, x, y):
-        if y < 0 or y >= ST7920_HEIGHT:
-            return
-        if x < 0 or x >= ST7920_WIDTH:
-            return
-
-        addr = ST7920_LINES[y] + x // 2
-        self._write(ST7920_CMD, addr)
-
-        line = t[:ST7920_WIDTH-x]
-        if x % 2 == 1:
-            self._write(ST7920_DAT, 32)    #(((
-        for c in line:
-            self._write(ST7920_DAT, ord(c))
+    def show(self):
+        for i in range(0, len(self.buf), 2):
+            x = (i // 2) % 8
+            y = i // 16
+            if i >= len(self.buf) // 2:
+                x += 8
+                y += 32
+            self._write(ST7920_CMD, 0x80 | y)
+            self._write(ST7920_CMD, 0x80 | x)
+            self._write(ST7920_DAT, self.buf[i])
+            self._write(ST7920_DAT, self.buf[i+1])
