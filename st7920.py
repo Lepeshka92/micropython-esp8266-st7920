@@ -1,8 +1,8 @@
 """
 
-RW  - GPIO13 (D7)
-RS  - GPIO12 (D6)
-E   - GPIO14 (D5)
+RW  - MOSI
+RS  - SS
+E   - SCK
 PSB - GND
 
 """
@@ -10,8 +10,8 @@ from micropython import const
 from time import sleep
 from framebuf import FrameBuffer, MONO_HLSB
 
-ST7920_DAT           = const(0xFA)    # Data
-ST7920_CMD           = const(0xF8)    # Command
+ST7920_DAT           = const(0xFA)
+ST7920_CMD           = const(0xF8)
 
 ST7920_CLEAR_SCREEN  = const(0x01)
 ST7920_DISPLAY_CTRL  = const(0x0C)
@@ -37,6 +37,7 @@ class ST7920(FrameBuffer):
         self.cmd[1] = (data & 0xF0)
         self.cmd[2] = ((data << 4) & 0xF0)
         self.spi.write(self.cmd)
+        sleep(0.000_072)
     
     def init(self):
         if self.rst:
